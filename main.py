@@ -11,9 +11,9 @@ from telegram.ext import (
     filters,
 )
 
-# Kullanıcı verileri ve bildirim gönderilen adaların takibi (spam olmasın diye)
+# Kullanıcıların koordinatları ve bildirim giden adaların takibi
 USER_COORDS = {}
-NOTIFIED_FORTS = set()  # Daha önce bildirim atılan adaların ID'leri/koordinatları
+NOTIFIED_FORTS = set()
 
 BASE_URL = "https://api.gge-tracker.com/api/v1/storms/forts"
 
@@ -48,7 +48,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
   )
 
 
-# Koordinat kaydetme
+# Koordinat kaydetme mesajı
 async def save_coordinates(update: Update, context: ContextTypes.DEFAULT_TYPE):
   user_id = update.effective_user.id
   text = update.message.text.strip()
@@ -65,9 +65,9 @@ async def save_coordinates(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
     USER_COORDS[user_id] = (x, y)
     await update.message.reply_text(
-        f"✅ Kalen X:{x}, Y:{y} olarak kaydedildi!\n"
-        "Artık adaları listelemek için `/ada` yazabilirsin. Ayrıca son 5"
-        " dakika kala otomatik bildirim alacaksın!"
+        f"✅ Kalen X:{x}, Y:{y} olarak kaydedildi!\n\nArtık çevrendeki adaları"
+        " listelemek için `/ada` yazabilirsin. Ayrıca son 5 dakika kala otomatik"
+        " bildirim alacaksın!"
     )
   except ValueError:
     pass
@@ -142,7 +142,7 @@ async def list_islands(update: Update, context: ContextTypes.DEFAULT_TYPE):
   await update.message.reply_text(msg, parse_mode="Markdown")
 
 
-# Arka planda 5 dakika kala bildirim atan döngü (Background Job)
+# Arka planda 5 dakika kala bildirim atan döngü
 async def check_spawn_timers(context: ContextTypes.DEFAULT_TYPE):
   data = fetch_storm_forts()
   if not data or "forts" not in data:
@@ -166,11 +166,8 @@ async def check_spawn_timers(context: ContextTypes.DEFAULT_TYPE):
       diff_seconds = (avail_time - now).total_seconds()
       mins_left = diff_seconds / 60
 
-      # Süre 0 ile 5 dakika arasındaysa ve daha önce bu ada için bildirim atılmadıysa
       if 0 < mins_left <= 5 and fort_key not in NOTIFIED_FORTS:
         NOTIFIED_FORTS.add(fort_key)
-
-        # Kayıtlı tüm kullanıcılara haber ver
         for user_id in USER_COORDS:
           try:
             await context.bot.send_message(
@@ -186,9 +183,30 @@ async def check_spawn_timers(context: ContextTypes.DEFAULT_TYPE):
           except:
             pass
 
-      # Süre sıfırlandıktan bir süre sonra listeden çıkar ki sonraki doğuşta tekrar uyarsın
       elif mins_left <= 0 and fort_key in NOTIFIED_FORTS:
         NOTIFIED_FORTS.remove(fort_key)
-
     except:
         pass
+
+
+def main():
+  # 🔥 BOTFATHER'DAN ALDIĞIN YENİ TOKEN'I BURAYA YAPIŞTIRacaksın:
+  TOKEN = "8835047696:AAHcZgGQczV4Qla20K3EkWmR3d4Axs4Pi4A "
+
+  application = ApplicationBuilder().token(TOKEN).build()
+
+  application.add_handler(CommandHandler("start", start))
+  application.add_handler(CommandHandler("ada", list_islands))
+  application.add_handler(
+      MessageHandler(filters.TEXT & ~filters.COMMAND, save_coordinates)
+  )
+
+  # Arka plan kontrolü (Her 60 saniyede bir tetiklenir)
+  job_queue = application.job_queue
+  job_queue.run_repeating(check_spawn_timers, interval=60, first=10)
+
+  application.run_polling()
+
+
+if __name__ == "__main__":
+  main()
