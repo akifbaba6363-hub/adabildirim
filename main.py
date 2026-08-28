@@ -16,6 +16,7 @@ USER_COORDS = {}
 NOTIFIED_FORTS = set()
 
 BASE_URL = "https://api.gge-tracker.com/api/v1/storms/forts"
+IMZA = "\n\n(Beyaztaş&Gemini by)"
 
 
 def fetch_storm_forts():
@@ -38,37 +39,39 @@ def calculate_distance(x1, y1, x2, y2):
   return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 
 
-# /start komutu
+# /start komutu (İsim yerine genel karşılama)
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
-  user_name = update.effective_user.first_name
-  await update.message.reply_text(
-      f"Selam {user_name}! Fırtına Adaları Takip Botuna hoş geldin.\n\n"
-      "Öncelikle kale koordinatlarını şu formatta gönder (Örnek: `645:897`)",
-      parse_mode="Markdown",
+  text = (
+      "Selam kaptan! Fırtına Adaları Takip Botuna hoş geldin. 🏴‍☠️\n\n"
+      "Öncelikle kale koordinatlarını şu formatta gönder (Örnek: `645:897`)"
+      + IMZA
   )
+  await update.message.reply_text(text, parse_mode="Markdown")
 
 
 # Koordinat kaydetme mesajı
 async def save_coordinates(update: Update, context: ContextTypes.DEFAULT_TYPE):
   user_id = update.effective_user.id
-  text = update.message.text.strip()
+  text_msg = update.message.text.strip()
 
   try:
-    if ":" in text:
-      parts = text.split(":")
+    if ":" in text_msg:
+      parts = text_msg.split(":")
       x, y = int(parts[0]), int(parts[1])
-    elif "," in text:
-      parts = text.split(",")
+    elif "," in text_msg:
+      parts = text_msg.split(",")
       x, y = int(parts[0]), int(parts[1])
     else:
       return
 
     USER_COORDS[user_id] = (x, y)
-    await update.message.reply_text(
+    reply_text = (
         f"✅ Kalen X:{x}, Y:{y} olarak kaydedildi!\n\nArtık çevrendeki adaları"
         " listelemek için `/ada` yazabilirsin. Ayrıca son 5 dakika kala otomatik"
         " bildirim alacaksın!"
+        + IMZA
     )
+    await update.message.reply_text(reply_text, parse_mode="Markdown")
   except ValueError:
     pass
 
@@ -79,7 +82,7 @@ async def list_islands(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
   if user_id not in USER_COORDS:
     await update.message.reply_text(
-        "⚠️ Önce kale koordinatlarını göndermelisin! Örnek: `645:897`",
+        "⚠️ Önce kale koordinatlarını göndermelisin! Örnek: `645:897`" + IMZA,
         parse_mode="Markdown",
     )
     return
@@ -89,7 +92,7 @@ async def list_islands(update: Update, context: ContextTypes.DEFAULT_TYPE):
 
   if not data or "forts" not in data:
     await update.message.reply_text(
-        "❌ Veriler alınamadı, birazdan tekrar dene."
+        "❌ Veriler alınamadı, birazdan tekrar dene." + IMZA
     )
     return
 
@@ -139,6 +142,7 @@ async def list_islands(update: Update, context: ContextTypes.DEFAULT_TYPE):
         f"⚔️ Hak: `{f['attacks']}/10` | Durum: {f['status']}\n\n"
     )
 
+  msg += IMZA
   await update.message.reply_text(msg, parse_mode="Markdown")
 
 
@@ -170,15 +174,14 @@ async def check_spawn_timers(context: ContextTypes.DEFAULT_TYPE):
         NOTIFIED_FORTS.add(fort_key)
         for user_id in USER_COORDS:
           try:
+            alert_msg = (
+                f"🚨 **DİKKAT! Fırtına Adası Açılıyor!** 🚨\n\n"
+                f"📍 Konum: `[{fx}, {fy}]`\n"
+                f"⏰ Kalan Süre: Yaklaşık **{int(mins_left)} dakika**!\n"
+                f"Hazırlıklarını yap, ada spamlanmak üzere! ⚔️" + IMZA
+            )
             await context.bot.send_message(
-                chat_id=user_id,
-                text=(
-                    f"🚨 **DİKKAT! Fırtına Adası Açılıyor!** 🚨\n\n"
-                    f"📍 Konum: `[{fx}, {fy}]`\n"
-                    f"⏰ Kalan Süre: Yaklaşık **{int(mins_left)} dakika**!\n"
-                    f"Hazırlıklarını yap, ada spamlanmak üzere! ⚔️"
-                ),
-                parse_mode="Markdown",
+                chat_id=user_id, text=alert_msg, parse_mode="Markdown"
             )
           except:
             pass
@@ -200,7 +203,6 @@ def main():
       MessageHandler(filters.TEXT & ~filters.COMMAND, save_coordinates)
   )
 
-  # JobQueue güvenli kontrolü
   if application.job_queue:
     job_queue = application.job_queue
     job_queue.run_repeating(check_spawn_timers, interval=60, first=10)
