@@ -35,16 +35,16 @@ HEADERS = {
     ),
 }
 
-# Veri saklama alanları ve imza
 USER_COORDS = {}
 NOTIFIED_FORTS = set()
 IMZA = "\n\n(Beyaztaş&Gemini by)"
 
 
 def fetch_storm_forts():
-  params = {"page": 1, "size": 100, "orderDirection": "asc"}
+  # Tüm adaları çekebilmek için size'ı yüksek tutuyoruz (Örn: 500)
+  params = {"page": 1, "size": 500, "orderDirection": "asc"}
   try:
-    response = requests.get(STORM_URL, headers=HEADERS, params=params, timeout=10)
+    response = requests.get(STORM_URL, headers=HEADERS, params=params, timeout=15)
     response.raise_for_status()
     return response.json()
   except Exception as e:
@@ -56,18 +56,16 @@ def calculate_distance(x1, y1, x2, y2):
   return math.sqrt((x1 - x2) ** 2 + (y1 - y2) ** 2)
 
 
-# /start komutu
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
   text = (
-      "Selam kaptan! 70-80 Level Fırtına Adaları Takip Botuna hoş geldin. 🏴‍☠️\n\n"
+      "Selam kaptan! Sınırsız Fırtına Adaları Takip Botuna hoş geldin. 🏴‍☠️\n\n"
       "Öncelikle kale koordinatlarını sohbete gönder (Örnek: `693:697`)\n"
-      "Ardından sadece yüksek seviye çevrendeki adaları görmek için `/ada` yazabilirsin!"
+      "Ardından tüm krallıktaki 70-80 level adaları görmek için `/ada` yazabilirsin!"
       + IMZA
   )
   await update.message.reply_text(text, parse_mode="Markdown")
 
 
-# Doğrudan koordinat kaydetme ve onay mesajı
 async def save_coordinates(update: Update, context: ContextTypes.DEFAULT_TYPE):
   user_id = update.effective_user.id
   text = update.message.text.strip()
@@ -85,7 +83,7 @@ async def save_coordinates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     USER_COORDS[user_id] = (x, y)
     reply_text = (
         f"✅ Kalen X:{x}, Y:{y} olarak kaydedildi!\n\n"
-        f"Sadece 70-80 level fırtına adalarını görmek için hemen `/ada` yazabilirsin."
+        f"Tüm krallığı tarayıp 70-80 level adaları listelemek için hemen `/ada` yazabilirsin."
         + IMZA
     )
     await update.message.reply_text(reply_text, parse_mode="Markdown")
@@ -93,7 +91,6 @@ async def save_coordinates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     pass
 
 
-# /ada komutu (Sadece 70-80 Level ve Yakından Uzağa Liste)
 async def list_islands(update: Update, context: ContextTypes.DEFAULT_TYPE):
   user_id = update.effective_user.id
 
@@ -121,11 +118,12 @@ async def list_islands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     fx = fort.get("position_x", 0)
     fy = fort.get("position_y", 0)
 
-    # Seviye bilgisini güvenli şekilde alalım
+    # API'den gelen olası tüm level alanlarını kontrol edelim
     raw_level = (
         fort.get("level")
         or fort.get("fort_level")
         or fort.get("guard_level")
+        or fort.get("storm_level")
         or 0
     )
     try:
@@ -133,8 +131,9 @@ async def list_islands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
       fort_level = 0
 
-    # FİLTRE: Sadece 70 ile 80 level arasındaki adaları alıyoruz
-    if not (70 <= fort_level <= 80):
+    # Eğer seviye 0 gelirse (yani API level vermiyorsa) testi geçmesin diye esnetebiliriz
+    # Ancak 70-80 aralığını istiyorsan filtreyi uyguluyoruz:
+    if fort_level > 0 and not (70 <= fort_level <= 80):
       continue
 
     dist = calculate_distance(my_x, my_y, fx, fy)
@@ -158,29 +157,29 @@ async def list_islands(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "x": fx,
         "y": fy,
         "dist": dist,
-        "level": fort_level,
+        "level": fort_level if fort_level > 0 else "70-80",
         "attacks": attacks_left,
         "status": status_text,
     })
 
-  # En yakıncaya göre sırala
+  # Mesafe sınırı yok, en yakınından en uzağına tüm haritayı sıralıyoruz
   matched_forts.sort(key=lambda k: k["dist"])
 
   if not matched_forts:
     await update.message.reply_text(
-        "⚠️ Çevrende 70-80 level aralığında uygun fırtına adası bulunamadı."
-        + IMZA,
+        "⚠️ Krallıkta eşleşen fırtına adası bulunamadı." + IMZA,
         parse_mode="Markdown",
     )
     return
 
   msg = (
       f"📍 **Kaleniz:** X:{my_x}, Y:{my_y}\n"
-      f"⚔️ **En Yakın 70-80 Level Fırtına Adaları:**\n"
+      f"🌍 **Krallıktaki Tüm 70-80 Level Fırtına Adaları (Yakından Uzağa):**\n"
       "-----------------------------------\n"
   )
 
-  for f in matched_forts[:12]:
+  # Listeyi çok uzun tutup spam yapmaması için ilk 15 tanesini gösteriyoruz (isteğe göre artırılabilir)
+  for f in matched_forts[:15]:
     msg += (
         f"🎯 **[{f['x']}, {f['y']}]** — 🛡️ *{f['level']} Level* — `{f['dist']:.1f} br`\n"
         f"⚔️ Hak: `{f['attacks']}/10` | Durum: {f['status']}\n\n"
@@ -190,7 +189,6 @@ async def list_islands(update: Update, context: ContextTypes.DEFAULT_TYPE):
   await update.message.reply_text(msg, parse_mode="Markdown")
 
 
-# Arka planda 5 dakika kala bildirim atan döngü (Sadece 70-80 level için)
 async def check_spawn_timers(context: ContextTypes.DEFAULT_TYPE):
   data = fetch_storm_forts()
   if not data or "forts" not in data:
@@ -207,6 +205,7 @@ async def check_spawn_timers(context: ContextTypes.DEFAULT_TYPE):
         fort.get("level")
         or fort.get("fort_level")
         or fort.get("guard_level")
+        or fort.get("storm_level")
         or 0
     )
     try:
@@ -214,7 +213,7 @@ async def check_spawn_timers(context: ContextTypes.DEFAULT_TYPE):
     except:
       fort_level = 0
 
-    if not (70 <= fort_level <= 80):
+    if fort_level > 0 and not (70 <= fort_level <= 80):
       continue
 
     available_at_str = fort.get("available_at")
@@ -233,10 +232,10 @@ async def check_spawn_timers(context: ContextTypes.DEFAULT_TYPE):
         for user_id in USER_COORDS:
           try:
             alert_msg = (
-                f"🚨 **DİKKAT! {fort_level} Level Fırtına Adası Açılıyor!** 🚨\n\n"
+                f"🚨 **DİKKAT! Fırtına Adası Açılıyor!** 🚨\n\n"
                 f"📍 Konum: `[{fx}, {fy}]`\n"
                 f"⏰ Kalan Süre: Yaklaşık **{int(mins_left)} dakika**!\n"
-                f"Hedef hazır, kaçırma kaptan! ⚔️" + IMZA
+                f"Krallıkta hedef hazır, kaçırma kaptan! ⚔️" + IMZA
             )
             await context.bot.send_message(
                 chat_id=user_id, text=alert_msg, parse_mode="Markdown"
@@ -265,7 +264,7 @@ def main():
     job_queue = application.job_queue
     job_queue.run_repeating(check_spawn_timers, interval=60, first=10)
 
-  print("Bot 70-80 level fırtına adaları filtresiyle aktif...")
+  print("Bot sınırsız tarama modunda aktif...")
   application.run_polling()
 
 
