@@ -39,9 +39,12 @@ USER_COORDS = {}
 NOTIFIED_FORTS = set()
 IMZA = "\n\n(Beyaztaş&Gemini by)"
 
+# Sadece 70 ve 80 level adaların isle_id leri (Keşfettiğimiz ID'ler: 8, 13, 14, 9 vb.)
+# 40 level veya diğer düşük leveller bu listede olmasın ki filtrelensin.
+TARGET_ISLE_IDS = {8, 9, 13, 14}
+
 
 def fetch_storm_forts():
-  # Tüm adaları çekebilmek için size'ı yüksek tutuyoruz (Örn: 500)
   params = {"page": 1, "size": 500, "orderDirection": "asc"}
   try:
     response = requests.get(STORM_URL, headers=HEADERS, params=params, timeout=15)
@@ -58,9 +61,9 @@ def calculate_distance(x1, y1, x2, y2):
 
 async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
   text = (
-      "Selam kaptan! Sınırsız Fırtına Adaları Takip Botuna hoş geldin. 🏴‍☠️\n\n"
+      "Selam kaptan! 70-80 Level Fırtına Adaları Takip Botuna hoş geldin. 🏴‍☠️\n\n"
       "Öncelikle kale koordinatlarını sohbete gönder (Örnek: `693:697`)\n"
-      "Ardından tüm krallıktaki 70-80 level adaları görmek için `/ada` yazabilirsin!"
+      "Ardından krallıktaki tüm 70-80 level adaları görmek için `/ada` yazabilirsin!"
       + IMZA
   )
   await update.message.reply_text(text, parse_mode="Markdown")
@@ -117,23 +120,15 @@ async def list_islands(update: Update, context: ContextTypes.DEFAULT_TYPE):
   for fort in forts_list:
     fx = fort.get("position_x", 0)
     fy = fort.get("position_y", 0)
+    isle_id = fort.get("isle_id")
 
-    # API'den gelen olası tüm level alanlarını kontrol edelim
-    raw_level = (
-        fort.get("level")
-        or fort.get("fort_level")
-        or fort.get("guard_level")
-        or fort.get("storm_level")
-        or 0
-    )
     try:
-      fort_level = int(raw_level)
+      isle_id_int = int(isle_id) if isle_id is not None else 0
     except:
-      fort_level = 0
+      isle_id_int = 0
 
-    # Eğer seviye 0 gelirse (yani API level vermiyorsa) testi geçmesin diye esnetebiliriz
-    # Ancak 70-80 aralığını istiyorsan filtreyi uyguluyoruz:
-    if fort_level > 0 and not (70 <= fort_level <= 80):
+    # Sadece senin istediğin 70-80 level id'lerini süzgeçten geçiriyoruz
+    if isle_id_int not in TARGET_ISLE_IDS:
       continue
 
     dist = calculate_distance(my_x, my_y, fx, fy)
@@ -157,17 +152,19 @@ async def list_islands(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "x": fx,
         "y": fy,
         "dist": dist,
-        "level": fort_level if fort_level > 0 else "70-80",
+        "level": (
+            "Level 70-80"
+        ),  # Doğrudan senin aradığın aralığı yazdırıyoruz
         "attacks": attacks_left,
         "status": status_text,
     })
 
-  # Mesafe sınırı yok, en yakınından en uzağına tüm haritayı sıralıyoruz
+  # Mesafe sınırı olmaksızın en yakından en uzağa sıralama
   matched_forts.sort(key=lambda k: k["dist"])
 
   if not matched_forts:
     await update.message.reply_text(
-        "⚠️ Krallıkta eşleşen fırtına adası bulunamadı." + IMZA,
+        "⚠️ Krallıkta eşleşen 70-80 level fırtına adası bulunamadı." + IMZA,
         parse_mode="Markdown",
     )
     return
@@ -178,10 +175,9 @@ async def list_islands(update: Update, context: ContextTypes.DEFAULT_TYPE):
       "-----------------------------------\n"
   )
 
-  # Listeyi çok uzun tutup spam yapmaması için ilk 15 tanesini gösteriyoruz (isteğe göre artırılabilir)
   for f in matched_forts[:15]:
     msg += (
-        f"🎯 **[{f['x']}, {f['y']}]** — 🛡️ *{f['level']} Level* — `{f['dist']:.1f} br`\n"
+        f"🎯 **[{f['x']}, {f['y']}]** — 🛡️ *{f['level']}* — `{f['dist']:.1f} br`\n"
         f"⚔️ Hak: `{f['attacks']}/10` | Durum: {f['status']}\n\n"
     )
 
@@ -200,20 +196,14 @@ async def check_spawn_timers(context: ContextTypes.DEFAULT_TYPE):
     fx = fort.get("position_x")
     fy = fort.get("position_y")
     fort_key = f"{fx}_{fy}"
+    isle_id = fort.get("isle_id")
 
-    raw_level = (
-        fort.get("level")
-        or fort.get("fort_level")
-        or fort.get("guard_level")
-        or fort.get("storm_level")
-        or 0
-    )
     try:
-      fort_level = int(raw_level)
+      isle_id_int = int(isle_id) if isle_id is not None else 0
     except:
-      fort_level = 0
+      isle_id_int = 0
 
-    if fort_level > 0 and not (70 <= fort_level <= 80):
+    if isle_id_int not in TARGET_ISLE_IDS:
       continue
 
     available_at_str = fort.get("available_at")
@@ -232,7 +222,7 @@ async def check_spawn_timers(context: ContextTypes.DEFAULT_TYPE):
         for user_id in USER_COORDS:
           try:
             alert_msg = (
-                f"🚨 **DİKKAT! Fırtına Adası Açılıyor!** 🚨\n\n"
+                f"🚨 **DİKKAT! 70-80 Level Fırtına Adası Açılıyor!** 🚨\n\n"
                 f"📍 Konum: `[{fx}, {fy}]`\n"
                 f"⏰ Kalan Süre: Yaklaşık **{int(mins_left)} dakika**!\n"
                 f"Krallıkta hedef hazır, kaçırma kaptan! ⚔️" + IMZA
@@ -246,7 +236,7 @@ async def check_spawn_timers(context: ContextTypes.DEFAULT_TYPE):
       elif mins_left <= 0 and fort_key in NOTIFIED_FORTS:
         NOTIFIED_FORTS.remove(fort_key)
     except:
-        pass
+      pass
 
 
 def main():
@@ -264,7 +254,7 @@ def main():
     job_queue = application.job_queue
     job_queue.run_repeating(check_spawn_timers, interval=60, first=10)
 
-  print("Bot sınırsız tarama modunda aktif...")
+  print("Bot 70-80 level filtreli modda aktif...")
   application.run_polling()
 
 
