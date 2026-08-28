@@ -190,8 +190,7 @@ async def check_spawn_timers(context: ContextTypes.DEFAULT_TYPE):
 
 
 def main():
-  # 🔥 BOTFATHER'DAN ALDIĞIN YENİ TOKEN'I BURAYA YAPIŞTIRacaksın:
-  TOKEN = "8835047696:AAHcZgGQczV4Qla20K3EkWmR3d4Axs4Pi4A "
+  TOKEN = "8835047696:AAHcZgGQczV4Qla20K3EkWmR3d4Axs4Pi4A"
 
   application = ApplicationBuilder().token(TOKEN).build()
 
@@ -201,9 +200,10 @@ def main():
       MessageHandler(filters.TEXT & ~filters.COMMAND, save_coordinates)
   )
 
-  # Arka plan kontrolü (Her 60 saniyede bir tetiklenir)
-  job_queue = application.job_queue
-  job_queue.run_repeating(check_spawn_timers, interval=60, first=10)
+  # JobQueue güvenli kontrolü
+  if application.job_queue:
+    job_queue = application.job_queue
+    job_queue.run_repeating(check_spawn_timers, interval=60, first=10)
 
   application.run_polling()
 
