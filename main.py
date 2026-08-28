@@ -39,8 +39,7 @@ USER_COORDS = {}
 NOTIFIED_FORTS = set()
 IMZA = "\n\n(Beyaztaş&Gemini by)"
 
-# Sadece 70 ve 80 level adaların isle_id leri (Keşfettiğimiz ID'ler: 8, 13, 14, 9 vb.)
-# 40 level veya diğer düşük leveller bu listede olmasın ki filtrelensin.
+# Sadece 70 ve 80 level adaların isle_id'leri
 TARGET_ISLE_IDS = {8, 9, 13, 14}
 
 
@@ -63,7 +62,7 @@ async def start(update: Update, context: ContextTypes.DEFAULT_TYPE):
   text = (
       "Selam kaptan! 70-80 Level Fırtına Adaları Takip Botuna hoş geldin. 🏴‍☠️\n\n"
       "Öncelikle kale koordinatlarını sohbete gönder (Örnek: `693:697`)\n"
-      "Ardından krallıktaki tüm 70-80 level adaları görmek için `/ada` yazabilirsin!"
+      "Ardından krallıktaki uygun adaları görmek için `/ada` yazabilirsin!"
       + IMZA
   )
   await update.message.reply_text(text, parse_mode="Markdown")
@@ -86,7 +85,7 @@ async def save_coordinates(update: Update, context: ContextTypes.DEFAULT_TYPE):
     USER_COORDS[user_id] = (x, y)
     reply_text = (
         f"✅ Kalen X:{x}, Y:{y} olarak kaydedildi!\n\n"
-        f"Tüm krallığı tarayıp 70-80 level adaları listelemek için hemen `/ada` yazabilirsin."
+        f"Krallığı tarayıp uygun adaları listelemek için hemen `/ada` yazabilirsin."
         + IMZA
     )
     await update.message.reply_text(reply_text, parse_mode="Markdown")
@@ -127,7 +126,6 @@ async def list_islands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     except:
       isle_id_int = 0
 
-    # Sadece senin istediğin 70-80 level id'lerini süzgeçten geçiriyoruz
     if isle_id_int not in TARGET_ISLE_IDS:
       continue
 
@@ -136,6 +134,8 @@ async def list_islands(update: Update, context: ContextTypes.DEFAULT_TYPE):
     available_at_str = fort.get("available_at")
 
     status_text = "Saldırılabilir"
+    skip_fort = False
+
     if available_at_str:
       try:
         avail_time = datetime.fromisoformat(
@@ -144,34 +144,39 @@ async def list_islands(update: Update, context: ContextTypes.DEFAULT_TYPE):
         diff_seconds = (avail_time - now).total_seconds()
         if diff_seconds > 0:
           mins = int(diff_seconds // 60)
-          status_text = f"Yeniden Doğuyor ({mins} dk)"
+          # 10 dakikadan uzun sürecekleri tamamen listeden eliyoruz
+          if mins > 10:
+            skip_fort = True
+          else:
+            status_text = f"Yeniden Doğuyor ({mins} dk)"
       except:
         pass
+
+    if skip_fort:
+      continue
 
     matched_forts.append({
         "x": fx,
         "y": fy,
         "dist": dist,
-        "level": (
-            "Level 70-80"
-        ),  # Doğrudan senin aradığın aralığı yazdırıyoruz
+        "level": "Level 70-80",
         "attacks": attacks_left,
         "status": status_text,
     })
 
-  # Mesafe sınırı olmaksızın en yakından en uzağa sıralama
   matched_forts.sort(key=lambda k: k["dist"])
 
   if not matched_forts:
     await update.message.reply_text(
-        "⚠️ Krallıkta eşleşen 70-80 level fırtına adası bulunamadı." + IMZA,
+        "⚠️ Krallıkta uygun (10 dk altı veya saldırılabilir) 70-80 level ada bulunamadı."
+        + IMZA,
         parse_mode="Markdown",
     )
     return
 
   msg = (
       f"📍 **Kaleniz:** X:{my_x}, Y:{my_y}\n"
-      f"🌍 **Krallıktaki Tüm 70-80 Level Fırtına Adaları (Yakından Uzağa):**\n"
+      f"🌍 **Krallıktaki Uygun 70-80 Level Fırtına Adaları:**\n"
       "-----------------------------------\n"
   )
 
@@ -254,7 +259,7 @@ def main():
     job_queue = application.job_queue
     job_queue.run_repeating(check_spawn_timers, interval=60, first=10)
 
-  print("Bot 70-80 level filtreli modda aktif...")
+  print("Bot 70-80 level ve max 10 dk filtreli modda aktif...")
   application.run_polling()
 
 
